@@ -60,7 +60,7 @@ plain script AND openable as cells in VS Code / PyCharm / Jupytext.
 # ## Setup (~5 min)
 #
 # 1. **Python 3.11 or 3.12**
-# 2. `pip install langchain-openai langchain-core python-dotenv`
+# 2. `pip install langchain-openai langchain-core pypdf python-dotenv`
 # 3. Use the OpenRouter API key provided for this program. This checkpoint uses
 #  the `openai/gpt-5.4-mini` model, with usage covered by the course credits. (this uses the paid gpt-5.4-mini chat model — covered by your course credits — and a keyword retriever, no embeddings).
 # 4. Create a `.env` file next to this script: `OPENROUTER_API_KEY=sk-or-v1-...`
@@ -82,8 +82,12 @@ from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
+from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_chroma import Chroma
+from pypdf import PdfReader
+from rank_bm25 import BM25Okapi
 
 # %%
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -140,15 +144,56 @@ def log(label: str, text: str) -> None:
 
 
 # %%
-SAMPLE_DOCS = [
-    {"id": "doc1", "text": "Program synthesis: generating programs automatically from a specification, such as input-output examples or a logical formula."},
-    {"id": "doc2", "text": "The sketching approach lets a programmer write a partial program with holes, and a synthesizer fills the holes to satisfy a specification."},
-    {"id": "doc3", "text": "Retrieval-augmented generation grounds a language model's answers in documents retrieved from a corpus, reducing hallucination."},
-    {"id": "doc4", "text": "BM25 is a keyword ranking function that scores documents by term frequency and inverse document frequency."},
-    {"id": "doc5", "text": "Vector search embeds text into dense vectors and ranks documents by cosine similarity to the query embedding."},
-    {"id": "doc6", "text": "Evaluation of retrieval systems measures whether the retrieved documents actually contain the information needed to answer the query."},
-]
-DOC_BY_ID = {d["id"]: d for d in SAMPLE_DOCS}
+def load_pdf_pages(pdf_paths: list[Path]) -> list[Document]:
+    """Extract each PDF page into its own LangChain Document."""
+    documents = []
+
+    for pdf_path in pdf_paths:
+        reader = PdfReader(pdf_path)
+        total_pages = len(reader.pages)
+
+        for page_index, page in enumerate(reader.pages):
+            page_content = (page.extract_text() or "").strip()
+            if not page_content:
+                continue
+
+            documents.append(
+                Document(
+                    page_content=page_content,
+                    metadata={
+                        "source": str(pdf_path),
+                        "file_name": pdf_path.name,
+                        "page": page_index,          # zero-based, LangChain convention
+                        "page_number": page_index + 1,  # one-based, for display
+                        "total_pages": total_pages,
+                    },
+                )
+            )
+
+    return documents
+
+
+PDF_DIR = Path("../checkpoint_1.1/ResearchPapers/")
+files = sorted(PDF_DIR.glob("*.pdf"))
+docs = load_pdf_pages(files)
+# Add index so we can get it from Chroma results
+for index, doc in enumerate(docs):
+    doc.metadata.update({
+        "doc_index": index,
+    })
+
+print(f"Loaded {len(docs)} pages from {len(files)} PDFs")
+
+
+# SAMPLE_DOCS = [
+#     {"id": "doc1", "text": "Program synthesis: generating programs automatically from a specification, such as input-output examples or a logical formula."},
+#     {"id": "doc2", "text": "The sketching approach lets a programmer write a partial program with holes, and a synthesizer fills the holes to satisfy a specification."},
+#     {"id": "doc3", "text": "Retrieval-augmented generation grounds a language model's answers in documents retrieved from a corpus, reducing hallucination."},
+#     {"id": "doc4", "text": "BM25 is a keyword ranking function that scores documents by term frequency and inverse document frequency."},
+#     {"id": "doc5", "text": "Vector search embeds text into dense vectors and ranks documents by cosine similarity to the query embedding."},
+#     {"id": "doc6", "text": "Evaluation of retrieval systems measures whether the retrieved documents actually contain the information needed to answer the query."},
+# ]
+# DOC_BY_ID = {d["id"]: d for d in SAMPLE_DOCS}
 
 
 # %% [markdown]
@@ -160,20 +205,82 @@ DOC_BY_ID = {d["id"]: d for d in SAMPLE_DOCS}
 # `answer` function then asks the LLM using only the retrieved documents.
 
 # %%
-def _tokens(text: str) -> set[str]:
-    return set(re.findall(r"[a-z0-9]+", text.lower()))
+# Stopwords list from Lab 1.2
+_STOPWORDS = {
+    "a", "an", "the", "and", "but", "or", "nor", "so", "yet", "for",
+    "in", "on", "at", "to", "of", "by", "with", "from", "into", "onto", "upon",
+    "about", "above", "below", "between", "through", "during", "before", "after",
+    "under", "over", "around", "along", "across", "is", "are", "was", "were",
+    "be", "been", "being", "have", "has", "had", "do", "does", "did",
+    "i", "we", "you", "he", "she", "it", "they", "me", "us", "him", "her", "them",
+    "my", "our", "your", "his", "its", "their", "this", "that", "these", "those",
+    "as", "if", "up", "out", "not", "no",
+}
+def tokenize(text: str) -> list[str]:
+    """Lowercase, split into alphanumeric tokens, drop stopwords. The same
+    tokenizer is used to index documents and to tokenize queries."""
+    return [t for t in re.findall(r"[a-z0-9]+", text.lower()) if t not in _STOPWORDS]
+bm25 = BM25Okapi([tokenize(doc.page_content) for doc in docs])
+def retrieve_bm25(query: str, topK: int):
+    scores = bm25.get_scores(tokenize(query))
+    top_indexes = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:topK]
+    return [(i, docs[i].page_content, scores[i]) for i in top_indexes]
+
+CHROMA_DIR = './chroma_db'
+EMBEDDING_MODEL = "openai/text-embedding-3-small"
+embeddings = OpenAIEmbeddings(
+    model=EMBEDDING_MODEL,
+    api_key=check_api_key(),
+    base_url=OPENROUTER_BASE_URL,
+)
+if not os.path.isdir(CHROMA_DIR):
+    Chroma.from_documents(docs, embeddings, persist_directory=CHROMA_DIR)
+def retrieve_vector(query: str, topK: int):
+    chroma = Chroma(persist_directory=CHROMA_DIR, embedding_function=embeddings) #TODO is this right
+    top_vector = chroma.similarity_search_with_score(query, k=topK)
+    return [(d.metadata.get("doc_index", "unknown"), d.page_content, s) for d, s in top_vector]
+
+# Normalize function from Lab 2.2
+def normalize(scores: list[float], invert: bool = False) -> list[float]:
+    """Min-max scale a list of scores to [0, 1]. If invert is True, flip the scores 
+    so a LOW raw value (e.g., a small vector distance = very similar) becomes a HIGH 
+ normalized score."""
+    if not scores:
+        return []
+    lo, hi = min(scores), max(scores)
+    if hi == lo:
+        return [0.5] * len(scores)  # all equal → neutral
+    norm = [(s - lo) / (hi - lo) for s in scores]
+    return [1.0 - n for n in norm] if invert else norm
+
+# Rank fusion adapted from Lab 2.2
+def retrieve(query: str, k: int = TOP_K) -> list[tuple[int, float]]:
+    """Hybrid retrieval"""
+    top_bm25 = retrieve_bm25(query, k)
+    top_vector = retrieve_vector(query, k)
+
+    bm_norm: dict[int, float] = {}
+    vec_norm: dict[int, float] = {}
+    if top_bm25:
+        for (index, content, _), val in zip(top_bm25, normalize([s for _, _, s in top_bm25])):
+            bm_norm[index] = val
+    if top_vector:
+        for (index, content, _), val in zip(top_vector, normalize([d for _, _, d in top_vector], invert=True)):
+            vec_norm[index] = val
+
+    WEIGHT_BM25 = 0.3
+    WEIGHT_VECTOR = 0.7
+    all_found_ids = bm_norm.keys() | vec_norm.keys()
+    fused = [
+        (id, WEIGHT_BM25 * bm_norm.get(id, 0.0) + WEIGHT_VECTOR * vec_norm.get(id, 0.0))
+        for id in all_found_ids
+    ]
+    fused.sort(key=lambda t: t[1], reverse=True)
+    return fused[:k]
 
 
-def retrieve(query: str, k: int = TOP_K) -> list[tuple[str, float]]:
-    """Baseline keyword retrieval: Score each doc by shared-word count, return top-k."""
-    q = _tokens(query)
-    scored = [(d["id"], float(len(q & _tokens(d["text"])))) for d in SAMPLE_DOCS]
-    scored.sort(key=lambda x: x[1], reverse=True)
-    return [(doc_id, score) for doc_id, score in scored[:k] if score > 0]
-
-
-def answer(llm: ChatOpenAI, query: str, doc_ids: list[str]) -> str:
-    context = "\n\n".join(f"[{i}] {DOC_BY_ID[i]['text']}" for i in doc_ids if i in DOC_BY_ID)
+def answer(llm: ChatOpenAI, query: str, doc_ids: list[int]) -> str:
+    context = "\n\n".join(f"[{i}] {docs[i].page_content}" for i in doc_ids)
     messages = [
         SystemMessage(content=ANSWER_SYSTEM),
         HumanMessage(content=f"Documents:\n{context}\n\nQuestion: {query}"),
@@ -209,13 +316,13 @@ def my_representative_queries() -> list[str]:
         "What authors wrote the paper \"Verifiable Reinforcement Learning via Policy Extraction\"?",
         # Query 2 - Intended result: "Using Program Synthesis for Social Recommendations" (DBLP_journals_corr_abs-1208-2925.pdf)
         # Open-ended, could involve one document or many, uses the word "not"
-        "What are some applications of program synthesis that are not related to writing code?"
+        "What are some applications of program synthesis that are not related to writing code?",
         # Query 3 - Probably keyword matches DBLP_conf_aplas_Solar-Lezama09.pdf, and hopefully compares to others
-        "How does sketching comparing to other techniques for generating programs?"
+        "How does sketching comparing to other techniques for generating programs?",
         # Query 4 - sematic-oriented. Targeting DBLP_conf_icml_GuRLSS024.pdf, neither "speed" or "produced" are found in the docuemnt
-        "What are some tests that show how fast code can be produced?"
+        "What are some tests that show how fast code can be produced?",
         # Query 5 - Broad sematic-oriented search: "programming languages" rather than "python" for instance
-        "What are some programming languages that are used in computer science research?"
+        "What are some programming languages that are used in computer science research?",
     ]
     return queries
 
@@ -229,6 +336,16 @@ def my_representative_queries() -> list[str]:
 # submission item #2.
 
 # %%
+def format_hit(hit: tuple) -> str:
+    index = hit[0]
+    score = hit[1]
+    doc = docs[index]
+    return f"""HIT:
+    index: {index}
+    score: {score}
+    filename: {doc.metadata["file_name"]}
+    page: {doc.metadata["page"]}"""
+
 def run() -> None:
     llm = make_llm()
     queries = my_representative_queries()
@@ -243,7 +360,7 @@ def run() -> None:
             continue
         ans = answer(llm, query, [doc_id for doc_id, _ in hits])
         print(f"  answer: {ans}\n")
-        log(f"QUERY {i}: {query}", f"retrieved={hits}\nanswer={ans}")
+        log(f"QUERY {i}: {query}", f"retrieved=\n{"\n".join([format_hit(hit) for hit in hits])}\nanswer={ans}")
     print("=" * 72)
     print("Done. Use the retrieved document results above as evidence in your writeup, and "
           "describe your REAL baseline (over your full corpus) in the submission.")

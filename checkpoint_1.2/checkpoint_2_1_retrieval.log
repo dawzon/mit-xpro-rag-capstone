@@ -1,0 +1,127 @@
+[2026-09-02T18:44:56] QUERY 1: What authors wrote the paper "Verifiable Reinforcement Learning via Policy Extraction"?
+retrieved=
+HIT:
+    index: 4716
+    score: 0.9920670287431583
+    filename: DBLP_journals_corr_abs-1805-08328.pdf
+    page: 0
+HIT:
+    index: 2739
+    score: 0.8015452200548121
+    filename: DBLP_conf_nips_BastaniPS18.pdf
+    page: 0
+HIT:
+    index: 2312
+    score: 0.0
+    filename: DBLP_conf_iclr_InalaBTS20.pdf
+    page: 11
+answer=The paper **"Verifiable Reinforcement Learning via Policy Extraction"** was written by:
+
+- **Osbert Bastani**
+- **Yewen Pu**
+- **Armando Solar-Lezama**
+
+The document lists them in the title page and abstract.
+------------------------------------------------------------------------
+[2026-09-02T18:44:57] QUERY 2: What are some applications of program synthesis that are not related to writing code?
+retrieved=
+HIT:
+    index: 206
+    score: 0.7
+    filename: DBLP_conf_cav_BraggFRS21.pdf
+    page: 106
+HIT:
+    index: 209
+    score: 0.31221853471709443
+    filename: DBLP_conf_cav_BraggFRS21.pdf
+    page: 109
+HIT:
+    index: 1372
+    score: 0.3
+    filename: DBLP_conf_cav_GaoKDRSAK19.pdf
+    page: 311
+answer=The documents do not give examples of program synthesis applications outside of writing code.
+
+What they do say is that program synthesis is used for “the creation of solutions for problems in some domain, in this case, program-synthesis problems,” and that Monica wants a tool that “outputs the intended program.” The provided documents do not mention non-code applications.
+------------------------------------------------------------------------
+[2026-09-02T18:44:59] QUERY 3: How does sketching comparing to other techniques for generating programs?
+retrieved=
+HIT:
+    index: 52
+    score: 0.7
+    filename: DBLP_conf_aplas_Solar-Lezama09.pdf
+    page: 0
+HIT:
+    index: 4647
+    score: 0.3
+    filename: DBLP_journals_corr_abs-1711-03243.pdf
+    page: 9
+HIT:
+    index: 2640
+    score: 0.3
+    filename: DBLP_conf_icml_PuMSK18.pdf
+    page: 9
+answer=The documents describe sketching as a way to combine human guidance with automated synthesis. In the paper’s words, it is “a new form of localized software synthesis” where “the programmer uses partial programs to describe the desired implementation strategy, and leaves the low-level details of the implementation to an automated synthesis procedure.”
+
+Compared with fully handwritten programming, sketching reduces the amount of detail the programmer must specify: “By combining the programmers insight expressed in the sketch with the synthesizer’s ability to reason exhaustively about all the low-level details of the problem, sketching allows complex algorithms to be implemented with minimal human effort.”
+
+Compared with other program-generation techniques, the provided documents do not give a detailed side-by-side comparison. They only indicate that sketching is related to “program synthesis” and “program sketching,” and cite prior work such as “Combinatorial sketching for finite programs” and “Program sketching.” So, from these documents alone, I can say sketching is a synthesis approach that uses partial programs and automated completion, but I can’t reliably compare it to specific other techniques beyond that.
+------------------------------------------------------------------------
+[2026-09-02T18:45:01] QUERY 4: What are some tests that show how fast code can be produced?
+retrieved=
+HIT:
+    index: 2359
+    score: 0.7
+    filename: DBLP_conf_iclr_JainHGLYZWSSS25.pdf
+    page: 37
+HIT:
+    index: 4280
+    score: 0.3
+    filename: DBLP_journals_corr_AlurFSS16.pdf
+    page: 14
+HIT:
+    index: 209
+    score: 0.025178028819428527
+    filename: DBLP_conf_cav_BraggFRS21.pdf
+    page: 109
+answer=The documents mention “Code Execution Performances” and “Results for models with C++ evaluations,” with a table of “PASS @1” scores, but they do not describe specific tests for how fast code can be produced.
+
+The closest relevant text is:
+
+- “Table 7: Code Execution Performances”
+- “Table 8: Results for models with C++ evaluations on the entire 713 LIVE CODE BENCH problems”
+
+If you mean a benchmark for code-generation speed, the documents provided here do not say more than that.
+------------------------------------------------------------------------
+[2026-09-02T18:45:03] QUERY 5: What are some programming languages that are used in computer science research?
+retrieved=
+HIT:
+    index: 3421
+    score: 0.7
+    filename: DBLP_conf_snapl_2015.pdf
+    page: 263
+HIT:
+    index: 4394
+    score: 0.3
+    filename: DBLP_journals_corr_GopalakrishnanH17.pdf
+    page: 49
+HIT:
+    index: 3492
+    score: 0.2938969498509337
+    filename: DBLP_conf_snapl_2015.pdf
+    page: 334
+answer=The documents mention several programming languages used in computer science research, including:
+
+- **Haskell** — “Haskell is a popular host language for embedded DSLs”
+- **Scala** — mentioned in “Firepile [80] (Scala)” and in “Delite/LMS”
+- **Lua** — “Terra [28, 29] (Lua)”
+- **Python** — “Copperhead [17] (Python)”
+- **Racket** — “Rackets macros [112] provide full control over the syntax and semantics”
+- **C++** — “Metaprogramming facilities exist in many languages, including C++ templates”
+- **Chapel** — listed under “Data parallel programming languages include ... Chapel [19]”
+- **X10** — also in that same list
+- **High Performance Fortran** — likewise listed as a data parallel programming language
+- **Fortress** — listed among data parallel programming languages
+
+The documents also mention systems/languages such as **NESL, SISAL, SaC, Data-Parallel Haskell, MapReduce, Hadoop, Spark, Dryad, Halide**, and others.
+------------------------------------------------------------------------
