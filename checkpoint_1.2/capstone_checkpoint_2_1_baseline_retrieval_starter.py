@@ -1,3 +1,20 @@
+# ---
+# jupyter:
+#   jupytext:
+#     cell_metadata_filter: -all
+#     formats: ipynb,py:percent
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.19.5
+#   kernelspec:
+#     display_name: Python 3
+#     language: python
+#     name: python3
+# ---
+
+# %%
 r"""Capstone Checkpoint 2.1 — Retrieval Strategy Design and Baseline Implementation (starter).
 Jupytext-style cell markers (# %% / # %% [markdown]) — runnable as a
 plain script AND openable as cells in VS Code / PyCharm / Jupytext.
@@ -187,7 +204,20 @@ def my_representative_queries() -> list[str]:
 
     Delete the raise NotImplementedError line once your code works.
     """
-    raise NotImplementedError("my_representative_queries() — see the TODO above.")
+    queries = [
+        # Query 1 - Exact question about a specific document (DBLP_conf_nips_BastaniPS18.pdf)
+        "What authors wrote the paper \"Verifiable Reinforcement Learning via Policy Extraction\"?",
+        # Query 2 - Intended result: "Using Program Synthesis for Social Recommendations" (DBLP_journals_corr_abs-1208-2925.pdf)
+        # Open-ended, could involve one document or many, uses the word "not"
+        "What are some applications of program synthesis that are not related to writing code?"
+        # Query 3 - Probably keyword matches DBLP_conf_aplas_Solar-Lezama09.pdf, and hopefully compares to others
+        "How does sketching comparing to other techniques for generating programs?"
+        # Query 4 - sematic-oriented. Targeting DBLP_conf_icml_GuRLSS024.pdf, neither "speed" or "produced" are found in the docuemnt
+        "What are some tests that show how fast code can be produced?"
+        # Query 5 - Broad sematic-oriented search: "programming languages" rather than "python" for instance
+        "What are some programming languages that are used in computer science research?"
+    ]
+    return queries
 
 
 # %% [markdown]
@@ -228,6 +258,6 @@ run()
 # worksheet. In the worksheet, you will document your retrieval approach, provide evidence that your 
 # system is functioning, include 3–5 representative queries and retrieved results, and reflect on where
 # your approach performs well and where it struggles.  
- 
+#  
 # Save your completed Python file in the appropriate checkpoint folder in your GitHub repository. 
 # Upload the completed worksheet only to the learning platform as your graded submission.
