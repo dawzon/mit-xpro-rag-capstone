@@ -1,0 +1,272 @@
+[2026-09-09T10:17:41] Q1: What authors wrote the paper "Verifiable Reinforcement Learning via Policy Extraction"?
+retrieved=HIT:
+    index: 4716
+    score: 0.996492396119524
+    filename: DBLP_journals_corr_abs-1805-08328.pdf
+    page: 0
+HIT:
+    index: 2739
+    score: 0.9121827274079901
+    filename: DBLP_conf_nips_BastaniPS18.pdf
+    page: 0
+HIT:
+    index: 2312
+    score: 0.39024635823140585
+    filename: DBLP_conf_iclr_InalaBTS20.pdf
+    page: 11
+HIT:
+    index: 4901
+    score: 0.3141012365974645
+    filename: DBLP_journals_corr_abs-2101-03238.pdf
+    page: 9
+HIT:
+    index: 2310
+    score: 0.26240112665095777
+    filename: DBLP_conf_iclr_InalaBTS20.pdf
+    page: 9
+HIT:
+    index: 2285
+    score: 0.07286281027667375
+    filename: DBLP_conf_hybrid_HuntFMHDS21.pdf
+    page: 0
+HIT:
+    index: 4717
+    score: 0.06795662651679049
+    filename: DBLP_journals_corr_abs-1805-08328.pdf
+    page: 1
+HIT:
+    index: 2740
+    score: 0.025510592451879692
+    filename: DBLP_conf_nips_BastaniPS18.pdf
+    page: 1
+verdict=pass
+answer=The paper **“Verifiable Reinforcement Learning via Policy Extraction”** was written by **Osbert Bastani, Yewen Pu, and Armando Solar-Lezama**.
+
+The document lists the authors as:
+- “**Osbert Bastani**”
+- “**Yewen Pu**”
+- “**Armando Solar-Lezama**”
+------------------------------------------------------------------------
+[2026-09-09T10:17:43] Q2: Has the study of program synthesis been applied to social networks?
+retrieved=HIT:
+    index: 4991
+    score: 0.7
+    filename: DBLP_journals_corr_abs-2206-06164.pdf
+    page: 22
+HIT:
+    index: 229
+    score: 0.437702145518902
+    filename: DBLP_conf_cav_BraggFRS21.pdf
+    page: 129
+HIT:
+    index: 4993
+    score: 0.34790493064026357
+    filename: DBLP_journals_corr_abs-2206-06164.pdf
+    page: 24
+HIT:
+    index: 3804
+    score: 0.3
+    filename: DBLP_conf_tacas_InalaPQLS17.pdf
+    page: 246
+HIT:
+    index: 3803
+    score: 0.27849958714524115
+    filename: DBLP_conf_tacas_InalaPQLS17.pdf
+    page: 245
+HIT:
+    index: 3341
+    score: 0.2730754808697374
+    filename: DBLP_conf_snapl_2015.pdf
+    page: 183
+HIT:
+    index: 2211
+    score: 0.2635100011846829
+    filename: DBLP_conf_cikm_CheungSM12.pdf
+    page: 8
+HIT:
+    index: 4601
+    score: 0.25650072479305647
+    filename: DBLP_journals_corr_abs-1208-2925.pdf
+    page: 8
+verdict=pass
+answer=Yes. The documents say they applied program synthesis to a social networking application: “our work focuses on personalized social recommendation applications” and “a hybrid scheme that combines synthesis-based feature selection with an SVM for classiﬁcation can provide excellent performance for social networking applications like Life-Join.” They also conclude that “using program synthesis on the output of an SVM can yield much simpler, and more human readable models,” for these applications.
+------------------------------------------------------------------------
+[2026-09-09T10:17:48] Q3: What are some program synthesis techniques that were explored before the year 2000? Provide direct quotations from original sources, including a citation of the original paper
+retrieved=HIT:
+    index: 5480
+    score: 0.7
+    filename: DBLP_journals_fmsd_FismanSS21.pdf
+    page: 1
+HIT:
+    index: 229
+    score: 0.3446592165578656
+    filename: DBLP_conf_cav_BraggFRS21.pdf
+    page: 129
+HIT:
+    index: 3323
+    score: 0.3
+    filename: DBLP_conf_snapl_2015.pdf
+    page: 165
+HIT:
+    index: 4991
+    score: 0.23181947459133687
+    filename: DBLP_journals_corr_abs-2206-06164.pdf
+    page: 22
+HIT:
+    index: 4993
+    score: 0.17810651195153593
+    filename: DBLP_journals_corr_abs-2206-06164.pdf
+    page: 24
+HIT:
+    index: 4681
+    score: 0.16449043823383142
+    filename: DBLP_journals_corr_abs-1802-07384.pdf
+    page: 0
+HIT:
+    index: 4996
+    score: 0.11689321700490181
+    filename: DBLP_journals_corr_abs-2206-06164.pdf
+    page: 27
+HIT:
+    index: 4648
+    score: 0.09502162180696888
+    filename: DBLP_journals_corr_abs-1711-11438.pdf
+    page: 0
+verdict=pass
+answer=Here are some program synthesis techniques that were explored before 2000, based on the provided documents:
+
+1. **Automatic program synthesis**
+   - Original source: **Manna Z, Waldinger RJ (1971), “Toward automatic program synthesis”**
+   - The document lists this paper as:
+     > “Manna Z, Waldinger Richard J (1971) Toward automatic program synthesis. Commun ACM 14(3):151–165” [5480]
+
+2. **Reactive module synthesis**
+   - Original source: **Pnueli A, Rosner R (1988), “A framework for the synthesis of reactive modules”**
+   - The document cites:
+     > “Pnueli A, Rosner R: A framework for the synthesis of reactive modules. In: Friedrich H V ogt, editor, Concurrency 88: International Conference on Concurrency, Hamburg, FRG, October 18-19, 1988, Proceedings, volume 335 of Lecture Notes in Computer Science, pages 4–17 Springer, (1988)” [5480]
+
+3. **Circuit synthesis via recursive arithmetic**
+   - Original source: **Church Alonzo (1963), “Application of recursive arithmetic to the problem of circuit synthesis”**
+   - The document lists:
+     > “Church Alonzo (1963) Application of recursive arithmetic to the problem of circuit synthesis. J Symbol Logic 28(4):289–290” [5480]
+
+4. **Syntax-guided synthesis**
+   - Although the exact term appears later in the documents, the pre-2000 paper list includes foundational work not earlier than 2000 in the excerpted references; however, the provided documents do **not** give a pre-2000 quotation describing this technique directly.
+   - So I can only say the document contains the citation:
+     > “Alur, R., et al.: Syntax-guided synthesis. In: Formal Methods in Computer-Aided Design (FMCAD), pp. 1–8. IEEE (2013)” [229]
+
+5. **Program synthesis from examples / programming by examples**
+   - The provided documents reference later work and related areas, but do not include a pre-2000 original source quote for this technique in the excerpts.
+
+If you want, I can also extract **all pre-2000 synthesis-related references** from the documents into a clean bibliography list.
+------------------------------------------------------------------------
+[2026-09-09T10:17:54] Q4: What are some programming languages that are used in modern computer science research?
+retrieved=HIT:
+    index: 3421
+    score: 0.7
+    filename: DBLP_conf_snapl_2015.pdf
+    page: 263
+HIT:
+    index: 3429
+    score: 0.4599266961918116
+    filename: DBLP_conf_snapl_2015.pdf
+    page: 271
+HIT:
+    index: 3506
+    score: 0.40519027058545853
+    filename: DBLP_conf_snapl_2015.pdf
+    page: 348
+HIT:
+    index: 3348
+    score: 0.3
+    filename: DBLP_conf_snapl_2015.pdf
+    page: 190
+HIT:
+    index: 3426
+    score: 0.20341779005678265
+    filename: DBLP_conf_snapl_2015.pdf
+    page: 268
+HIT:
+    index: 3260
+    score: 0.16359799525191238
+    filename: DBLP_conf_snapl_2015.pdf
+    page: 102
+HIT:
+    index: 3274
+    score: 0.1388205795211347
+    filename: DBLP_conf_snapl_2015.pdf
+    page: 116
+HIT:
+    index: 3427
+    score: 0.08608865873467628
+    filename: DBLP_conf_snapl_2015.pdf
+    page: 269
+verdict=pass
+answer=The documents mention several programming languages and language systems used in modern computer science research, including:
+
+- **Haskell** — “Haskell is a popular host language for embedded DSLs” and is linked to systems like **Accelerate**, **Feldspar**, and **Nikola**.  
+- **Scala** — mentioned in “Firepile (Scala)” and in work on DSLs and performance programming.  
+- **Python** — mentioned with **Copperhead (Python)** and “PyCUDA and PyOpenCL.”  
+- **Lua** — mentioned in **Terra (Lua)**.  
+- **Racket** — “Rackets macros provide full control over the syntax and semantics.”  
+- **C++** — discussed in the section “C++ Templates.”  
+- **Chapel**, **X10**, **F#**, **Java**, and **Scheme** — all appear in the references and related work.
+
+A few direct quotes:
+- “**Haskell is a popular host language for embedded DSLs**”
+- “Other performance oriented DSLs include **Firepile (Scala), Terra (Lua). Copperhead (Python). Rackets macros** provide full control...”
+- “**Metaprogramming facilities exist in many languages, including C++ templates**”
+
+If you want, I can also group them by whether they are used as host languages, DSLs, or metaprogramming languages.
+------------------------------------------------------------------------
+[2026-09-09T10:17:57] Q5: What is unique about program synthesis by sketching?
+retrieved=HIT:
+    index: 52
+    score: 1.0
+    filename: DBLP_conf_aplas_Solar-Lezama09.pdf
+    page: 0
+HIT:
+    index: 4800
+    score: 0.3242606583978159
+    filename: DBLP_journals_corr_abs-1902-06349.pdf
+    page: 9
+HIT:
+    index: 944
+    score: 0.2705853082768408
+    filename: DBLP_conf_cav_BraggFRS21.pdf
+    page: 844
+HIT:
+    index: 925
+    score: 0.20640165324395418
+    filename: DBLP_conf_cav_BraggFRS21.pdf
+    page: 825
+HIT:
+    index: 3004
+    score: 0.13389934024540964
+    filename: DBLP_conf_pldi_Solar-LezamaRBE05.pdf
+    page: 7
+HIT:
+    index: 4887
+    score: 0.1331030447596793
+    filename: DBLP_journals_corr_abs-2006-08381.pdf
+    page: 17
+HIT:
+    index: 3160
+    score: 0.13300988966601415
+    filename: DBLP_conf_sigsoft_SinghS11.pdf
+    page: 10
+HIT:
+    index: 4247
+    score: 0.05524733200104258
+    filename: DBLP_journals_corr_0002S16.pdf
+    page: 3
+verdict=pass
+answer=According to the documents, what is unique about program synthesis by sketching is that it lets the programmer provide a **partial program** that captures the **high-level structure** of the solution, while the synthesizer fills in the low-level details.
+
+As the paper says, sketching is “**a new form of localized software synthesis**” where “**the programmer uses partial programs to describe the desired implementation strategy, and leaves the low-level details of the implementation to an automated synthesis procedure**” [52].
+
+It also says that in sketching, the programmer writes “**a sketch—a partial program that encodes the structure of a solution while leaving its low-level details unspecified**” [52]. This combination of human guidance and automated completion is the distinctive feature.
+------------------------------------------------------------------------
+[2026-09-09T10:18:04] FRAMEWORK VALIDATION
+good=pass manipulated=fail
+------------------------------------------------------------------------

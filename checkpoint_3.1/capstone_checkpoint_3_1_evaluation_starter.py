@@ -1,3 +1,20 @@
+# ---
+# jupyter:
+#   jupytext:
+#     cell_metadata_filter: -all
+#     formats: ipynb,py:percent
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.19.5
+#   kernelspec:
+#     display_name: Python 3
+#     language: python
+#     name: python3
+# ---
+
+# %%
 r"""Capstone Checkpoint 3.1 — Evaluation Infrastructure and Baseline Diagnosis (starter).
 Jupytext-style cell markers (# %% / # %% [markdown]) — runnable as a
 plain script AND openable as cells in VS Code / PyCharm / Jupytext.
@@ -63,13 +80,20 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+
+from langchain_chroma import Chroma
+from langchain_core.documents import Document
+from pypdf import PdfReader
+from rank_bm25 import BM25Okapi
 
 # %%
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-LLM_MODEL = "openai/gpt-5.4-mini"  # latest small OpenAI model, fast; covered by course credits
+ANSWER_MODEL = "openai/gpt-5.4-mini"  # latest small OpenAI model, fast; covered by course credits
+JUDGE_MODEL = "openai/gpt-5.4"
 TEMPERATURE = 0.2
-TOP_K = 3
+# TOP_K = 3
+TOP_K = 8
 LOG_PATH = Path.cwd() / "checkpoint_3_1_evaluation.log"
 
 SCENARIO = "research_papers"   # "research_papers" or "wikipedia"
@@ -101,7 +125,15 @@ def check_api_key() -> str:
 
 def make_llm() -> ChatOpenAI:
     return ChatOpenAI(
-        model=LLM_MODEL,
+        model=ANSWER_MODEL,
+        temperature=TEMPERATURE,
+        api_key=check_api_key(),
+        base_url=OPENROUTER_BASE_URL,
+    )
+
+def make_judge_llm() -> ChatOpenAI:
+    return ChatOpenAI(
+        model=JUDGE_MODEL,
         temperature=TEMPERATURE,
         api_key=check_api_key(),
         base_url=OPENROUTER_BASE_URL,
@@ -113,41 +145,163 @@ def log(label: str, text: str) -> None:
     with LOG_PATH.open("a", encoding="utf-8") as fh:
         fh.write(f"[{ts}] {label}\n{text}\n{'-' * 72}\n")
 
-
 # %% [markdown]
 # ## Demonstration corpus + retriever (provided to illustrate the evaluation workflow)
 
 # %%
-SAMPLE_DOCS = [
-    {"id": "doc1", "text": "Program synthesis: generating programs automatically from a specification, such as input-output examples or a logical formula."},
-    {"id": "doc2", "text": "The sketching approach lets a programmer write a partial program with holes, and a synthesizer fills the holes to satisfy a specification."},
-    {"id": "doc3", "text": "Retrieval-augmented generation grounds a language model's answers in documents retrieved from a corpus, reducing hallucination."},
-    {"id": "doc4", "text": "BM25 is a keyword ranking function that scores documents by term frequency and inverse document frequency."},
-    {"id": "doc5", "text": "Vector search embeds text into dense vectors and ranks documents by cosine similarity to the query embedding."},
-    {"id": "doc6", "text": "Evaluation of retrieval systems measures whether the retrieved documents actually contain the information needed to answer the query."},
-]
-DOC_BY_ID = {d["id"]: d for d in SAMPLE_DOCS}
+# SAMPLE_DOCS = [
+#     {"id": "doc1", "text": "Program synthesis: generating programs automatically from a specification, such as input-output examples or a logical formula."},
+#     {"id": "doc2", "text": "The sketching approach lets a programmer write a partial program with holes, and a synthesizer fills the holes to satisfy a specification."},
+#     {"id": "doc3", "text": "Retrieval-augmented generation grounds a language model's answers in documents retrieved from a corpus, reducing hallucination."},
+#     {"id": "doc4", "text": "BM25 is a keyword ranking function that scores documents by term frequency and inverse document frequency."},
+#     {"id": "doc5", "text": "Vector search embeds text into dense vectors and ranks documents by cosine similarity to the query embedding."},
+#     {"id": "doc6", "text": "Evaluation of retrieval systems measures whether the retrieved documents actually contain the information needed to answer the query."},
+# ]
+# DOC_BY_ID = {d["id"]: d for d in SAMPLE_DOCS}
 
 
-def _tokens(text: str) -> set[str]:
-    return set(re.findall(r"[a-z0-9]+", text.lower()))
+# def _tokens(text: str) -> set[str]:
+#     return set(re.findall(r"[a-z0-9]+", text.lower()))
 
 
-def retrieve(query: str, k: int = TOP_K) -> list[tuple[str, float]]:
-    q = _tokens(query)
-    scored = [(d["id"], float(len(q & _tokens(d["text"])))) for d in SAMPLE_DOCS]
-    scored.sort(key=lambda x: x[1], reverse=True)
-    return [(doc_id, score) for doc_id, score in scored[:k] if score > 0]
+# def retrieve(query: str, k: int = TOP_K) -> list[tuple[str, float]]:
+#     q = _tokens(query)
+#     scored = [(d["id"], float(len(q & _tokens(d["text"])))) for d in SAMPLE_DOCS]
+#     scored.sort(key=lambda x: x[1], reverse=True)
+#     return [(doc_id, score) for doc_id, score in scored[:k] if score > 0]
+
+####################################### PDF LOADING ####################################### 
+def load_pdf_pages(pdf_paths: list[Path]) -> list[Document]:
+    """Extract each PDF page into its own LangChain Document."""
+    documents = []
+
+    for pdf_path in pdf_paths:
+        reader = PdfReader(pdf_path)
+        total_pages = len(reader.pages)
+
+        for page_index, page in enumerate(reader.pages):
+            page_content = (page.extract_text() or "").strip()
+            if not page_content:
+                continue
+
+            documents.append(
+                Document(
+                    page_content=page_content,
+                    metadata={
+                        "source": str(pdf_path),
+                        "file_name": pdf_path.name,
+                        "page": page_index,          # zero-based, LangChain convention
+                        "page_number": page_index + 1,  # one-based, for display
+                        "total_pages": total_pages,
+                    },
+                )
+            )
+
+    return documents
 
 
-def answer(llm: ChatOpenAI, query: str, doc_ids: list[str]) -> str:
-    context = "\n\n".join(f"[{i}] {DOC_BY_ID[i]['text']}" for i in doc_ids if i in DOC_BY_ID)
+PDF_DIR = Path("../checkpoint_1.1/ResearchPapers/")
+files = sorted(PDF_DIR.glob("*.pdf"))
+docs = load_pdf_pages(files)
+# Add index so we can get it from Chroma results
+for index, doc in enumerate(docs):
+    doc.metadata.update({
+        "doc_index": index,
+    })
+
+print(f"Loaded {len(docs)} pages from {len(files)} PDFs")
+
+####################################### DOCUMENT RETRIEVAL ####################################### 
+# Stopwords list from Lab 1.2
+_STOPWORDS = {
+    "a", "an", "the", "and", "but", "or", "nor", "so", "yet", "for",
+    "in", "on", "at", "to", "of", "by", "with", "from", "into", "onto", "upon",
+    "about", "above", "below", "between", "through", "during", "before", "after",
+    "under", "over", "around", "along", "across", "is", "are", "was", "were",
+    "be", "been", "being", "have", "has", "had", "do", "does", "did",
+    "i", "we", "you", "he", "she", "it", "they", "me", "us", "him", "her", "them",
+    "my", "our", "your", "his", "its", "their", "this", "that", "these", "those",
+    "as", "if", "up", "out", "not", "no",
+}
+def tokenize(text: str) -> list[str]:
+    """Lowercase, split into alphanumeric tokens, drop stopwords. The same
+    tokenizer is used to index documents and to tokenize queries."""
+    return [t for t in re.findall(r"[a-z0-9]+", text.lower()) if t not in _STOPWORDS]
+bm25 = BM25Okapi([tokenize(doc.page_content) for doc in docs])
+def retrieve_bm25(query: str, topK: int):
+    scores = bm25.get_scores(tokenize(query))
+    top_indexes = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:topK]
+    return [(i, docs[i].page_content, scores[i]) for i in top_indexes]
+
+CHROMA_DIR = './chroma_db'
+EMBEDDING_MODEL = "openai/text-embedding-3-small"
+embeddings = OpenAIEmbeddings(
+    model=EMBEDDING_MODEL,
+    api_key=check_api_key(),
+    base_url=OPENROUTER_BASE_URL,
+)
+if not os.path.isdir(CHROMA_DIR):
+    Chroma.from_documents(docs, embeddings, persist_directory=CHROMA_DIR)
+def retrieve_vector(query: str, topK: int):
+    chroma = Chroma(persist_directory=CHROMA_DIR, embedding_function=embeddings) #TODO is this right
+    top_vector = chroma.similarity_search_with_score(query, k=topK)
+    return [(d.metadata.get("doc_index", "unknown"), d.page_content, s) for d, s in top_vector]
+
+# Normalize function from Lab 2.2
+def normalize(scores: list[float], invert: bool = False) -> list[float]:
+    """Min-max scale a list of scores to [0, 1]. If invert is True, flip the scores 
+    so a LOW raw value (e.g., a small vector distance = very similar) becomes a HIGH 
+ normalized score."""
+    if not scores:
+        return []
+    lo, hi = min(scores), max(scores)
+    if hi == lo:
+        return [0.5] * len(scores)  # all equal → neutral
+    norm = [(s - lo) / (hi - lo) for s in scores]
+    return [1.0 - n for n in norm] if invert else norm
+
+# Rank fusion adapted from Lab 2.2
+def retrieve(query: str, k: int = TOP_K) -> list[tuple[int, float]]:
+    """Hybrid retrieval"""
+    top_bm25 = retrieve_bm25(query, k)
+    top_vector = retrieve_vector(query, k)
+
+    bm_norm: dict[int, float] = {}
+    vec_norm: dict[int, float] = {}
+    if top_bm25:
+        for (index, content, _), val in zip(top_bm25, normalize([s for _, _, s in top_bm25])):
+            bm_norm[index] = val
+    if top_vector:
+        for (index, content, _), val in zip(top_vector, normalize([d for _, _, d in top_vector], invert=True)):
+            vec_norm[index] = val
+
+    WEIGHT_BM25 = 0.3
+    WEIGHT_VECTOR = 0.7
+    all_found_ids = bm_norm.keys() | vec_norm.keys()
+    fused = [
+        (id, WEIGHT_BM25 * bm_norm.get(id, 0.0) + WEIGHT_VECTOR * vec_norm.get(id, 0.0))
+        for id in all_found_ids
+    ]
+    fused.sort(key=lambda t: t[1], reverse=True)
+    return fused[:k]
+
+
+def answer(llm: ChatOpenAI, query: str, doc_ids: list[int]) -> str:
+    context = "\n\n".join(f"[{i}] {docs[i].page_content}" for i in doc_ids)
     messages = [
         SystemMessage(content=ANSWER_SYSTEM),
         HumanMessage(content=f"Documents:\n{context}\n\nQuestion: {query}"),
     ]
     return llm.invoke(messages).content
 
+
+# def answer(llm: ChatOpenAI, query: str, doc_ids: list[str]) -> str:
+#     context = "\n\n".join(f"[{i}] {DOC_BY_ID[i]['text']}" for i in doc_ids if i in DOC_BY_ID)
+#     messages = [
+#         SystemMessage(content=ANSWER_SYSTEM),
+#         HumanMessage(content=f"Documents:\n{context}\n\nQuestion: {query}"),
+#     ]
+#     return llm.invoke(messages).content
 
 # %% [markdown]
 # ## Step 2 — The evaluation metric (provided)
@@ -188,7 +342,33 @@ def my_eval_set() -> list[dict]:
 
     Delete the raise NotImplementedError line once your code works.
     """
-    raise NotImplementedError("my_eval_set() — see the TODO above.")
+    return [
+        # Exact question about a specific document (DBLP_conf_nips_BastaniPS18.pdf)
+        {
+            "question": "What authors wrote the paper \"Verifiable Reinforcement Learning via Policy Extraction\"?",
+            "grading_notes": "This paper was written by Osbert Bastani, Yewen Pu, and Armando Solar-Lezama."
+        },
+        # Find a paper with a particular topic (DBLP_journals_corr_abs-1208-2925.pdf)
+        {
+            "question": "Has the study of program synthesis been applied to social networks?",
+            "grading_notes": "Yes. In \"Using Program Synthesis for Social Recommendations\", program synthesis was used to learn users' preferences."
+        },
+        # Question about information that is not contained in the corpus
+        {
+            "question": "What are some program synthesis techniques that were explored before the year 2000? Provide direct quotations from original sources, including a citation of the original paper",
+            "grading_notes": "I did not find any information about program synthesis techniques before the year 2000."
+        },
+        # Many possible answers, pushing the limit of what a pass/fail test can measure
+        {
+            "question": "What are some programming languages that are used in modern computer science research?",
+            "grading_notes": "Some of the programming languages used include Haskell, Scala, Lua, Python, Racket, and C++." # These are some of the answers from the checkpoint 2.1 log
+        },
+        # Answer might contain reference to other papers (DBLP_conf_aplas_Solar-Lezama09.pdf)
+        {
+            "question": "What is unique about program synthesis by sketching?",
+            "grading_notes": "Sketching invovles writing a high-level program that leaves low-level details to be solved automatically."
+        },
+    ]
 
 
 # %% [markdown]
@@ -203,21 +383,32 @@ def my_eval_set() -> list[dict]:
 # analyse in the report.
 
 # %%
+def format_hit(hit: tuple) -> str:
+    index = hit[0]
+    score = hit[1]
+    doc = docs[index]
+    return f"""HIT:
+    index: {index}
+    score: {score}
+    filename: {doc.metadata["file_name"]}
+    page: {doc.metadata["page"]}"""
+
 def run_evaluation() -> None:
     llm = make_llm()
+    judge_llm = make_llm()
     eval_set = my_eval_set()
     passes = 0
     print(f"Checkpoint 3.1 — baseline evaluation  |  scenario: {SCENARIO}\n")
     for i, item in enumerate(eval_set, 1):
         hits = retrieve(item["question"], TOP_K)
         ans = answer(llm, item["question"], [doc_id for doc_id, _ in hits]) if hits else "(no documents retrieved)"
-        verdict = judge(llm, ans, item["grading_notes"])
+        verdict = judge(judge_llm, ans, item["grading_notes"])
         passes += verdict == "pass"
         print("=" * 72)
         print(f"Q{i}: {item['question']}")
-        print(f"  retrieved={hits}  verdict={verdict.upper()}")
+        print(f"  retrieved={"\n".join([format_hit(hit) for hit in hits])}  verdict={verdict.upper()}")
         print(f"  answer: {ans}")
-        log(f"Q{i}: {item['question']}", f"retrieved={hits}\nverdict={verdict}\nanswer={ans}")
+        log(f"Q{i}: {item['question']}", f"retrieved={"\n".join([format_hit(hit) for hit in hits])}\nverdict={verdict}\nanswer={ans}")
     print("=" * 72)
     print(f"Baseline pass rate: {passes}/{len(eval_set)}")
 
@@ -233,12 +424,13 @@ def run_evaluation() -> None:
 # %%
 def validate_framework() -> None:
     llm = make_llm()
-    q = "What is BM25?"
-    notes = "States that BM25 is a keyword / term-frequency ranking function for documents."
+    judge_llm = make_judge_llm()
+    q = "What are some programming languages that are used in modern computer science research?"
+    notes = "Languages used in modern computer science research include Haskell, Scala, Lua, Python, Racket, and C++."
     good = answer(llm, q, [doc_id for doc_id, _ in retrieve(q)])
-    manipulated = "BM25 is a deep neural network that generates images from text prompts."
-    good_verdict = judge(llm, good, notes)
-    manip_verdict = judge(llm, manipulated, notes)
+    manipulated = "COBOL is often used in modern computer science research."
+    good_verdict = judge(judge_llm, good, notes)
+    manip_verdict = judge(judge_llm, manipulated, notes)
     print("\n--- Framework validation ---")
     print(f"  correct answer   -> {good_verdict.upper()}   (expected PASS)")
     print(f"  manipulated answer -> {manip_verdict.upper()}   (expected FAIL)")
