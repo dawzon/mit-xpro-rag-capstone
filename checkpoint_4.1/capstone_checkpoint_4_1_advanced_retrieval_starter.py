@@ -1,3 +1,20 @@
+# ---
+# jupyter:
+#   jupytext:
+#     cell_metadata_filter: -all
+#     formats: ipynb,py:percent
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.19.5
+#   kernelspec:
+#     display_name: Python 3
+#     language: python
+#     name: python3
+# ---
+
+# %%
 r"""Capstone Checkpoint 4.1 — Advanced Retrieval Implementation (starter).
 Jupytext-style cell markers (# %% / # %% [markdown]) — runnable as a
 plain script AND openable as cells in VS Code/PyCharm/Jupytext.
@@ -73,10 +90,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import networkx as nx
+# import networkx as nx
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+
+from langchain_chroma import Chroma
+from langchain_core.documents import Document
+from langchain_core.load import dumps, loads
+from pypdf import PdfReader
+from rank_bm25 import BM25Okapi
 
 # %%
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -91,6 +114,7 @@ DECOMPOSE_SYSTEM = (
     "You are a query decomposition assistant for a document retrieval system. "
     "Break the user's question into 2-4 focused sub-queries that together cover "
     "everything needed to answer it. Each sub-query should target a distinct aspect. "
+    "You may also add general questions in order to compare the given topic to related topics."
     'Return ONLY a JSON array of strings, e.g., ["sub-query 1", "sub-query 2"].'
 )
 
@@ -144,38 +168,173 @@ def log_response(label: str, prompt: str, response: str) -> None:
 # Wikipedia). Your real system would derive these from your actual data.
 
 # %%
-SAMPLE_DOCS = [
-    {"id": "d1", "text": "Paper on retrieval-augmented generation: Grounding LLM answers in retrieved documents reduces hallucination.",
-     "topics": ["RAG", "hallucination"], "links": ["d2", "d3"]},
-    {"id": "d2", "text": "Study of hallucination in language models: Models fabricate specifics when they lack grounding.",
-     "topics": ["hallucination"], "links": ["d1"]},
-    {"id": "d3", "text": "Hybrid retrieval combines keyword and vector search to improve recall over either alone.",
-     "topics": ["RAG", "retrieval"], "links": ["d1", "d4"]},
-    {"id": "d4", "text": "Query decomposition breaks a complex question into sub-queries, improving multi-aspect retrieval.",
-     "topics": ["retrieval", "decomposition"], "links": ["d3"]},
-    {"id": "d5", "text": "Graph-based retrieval traverses relationships between documents to add related context.",
-     "topics": ["retrieval", "graph"], "links": ["d4", "d6"]},
-    {"id": "d6", "text": "Evaluation of RAG systems uses an LLM judge to score answers against grading notes.",
-     "topics": ["evaluation", "RAG"], "links": ["d5"]},
-]
-DOC_BY_ID = {d["id"]: d for d in SAMPLE_DOCS}
+# SAMPLE_DOCS = [
+#     {"id": "d1", "text": "Paper on retrieval-augmented generation: Grounding LLM answers in retrieved documents reduces hallucination.",
+#      "topics": ["RAG", "hallucination"], "links": ["d2", "d3"]},
+#     {"id": "d2", "text": "Study of hallucination in language models: Models fabricate specifics when they lack grounding.",
+#      "topics": ["hallucination"], "links": ["d1"]},
+#     {"id": "d3", "text": "Hybrid retrieval combines keyword and vector search to improve recall over either alone.",
+#      "topics": ["RAG", "retrieval"], "links": ["d1", "d4"]},
+#     {"id": "d4", "text": "Query decomposition breaks a complex question into sub-queries, improving multi-aspect retrieval.",
+#      "topics": ["retrieval", "decomposition"], "links": ["d3"]},
+#     {"id": "d5", "text": "Graph-based retrieval traverses relationships between documents to add related context.",
+#      "topics": ["retrieval", "graph"], "links": ["d4", "d6"]},
+#     {"id": "d6", "text": "Evaluation of RAG systems uses an LLM judge to score answers against grading notes.",
+#      "topics": ["evaluation", "RAG"], "links": ["d5"]},
+# ]
+# DOC_BY_ID = {d["id"]: d for d in SAMPLE_DOCS}
+
+####################################### PDF LOADING ####################################### 
+CACHE_DIR = './doc_cache'
+
+def load_pdf_pages(pdf_paths: list[Path]) -> list[Document]:
+    """Extract each PDF page into its own LangChain Document."""
+    PDF_DIR = Path("../checkpoint_1.1/ResearchPapers/")
+    files = sorted(PDF_DIR.glob("*.pdf"))
+
+    documents = []
+
+    os.makedirs(CACHE_DIR , exist_ok=True)
+
+    for pdf_path in pdf_paths:
+        reader = PdfReader(pdf_path)
+        total_pages = len(reader.pages)
+
+        for page_index, page in enumerate(reader.pages):
+            page_content = (page.extract_text() or "").strip()
+            if not page_content:
+                continue
+
+            documents.append(
+                Document(
+                    page_content=page_content,
+                    metadata={
+                        "source": str(pdf_path),
+                        "file_name": pdf_path.name,
+                        "page": page_index,          # zero-based, LangChain convention
+                        "page_number": page_index + 1,  # one-based, for display
+                        "total_pages": total_pages,
+                    },
+                )
+            )
+
+            doc_index = len(documents) - 1
+            with open(f"{CACHE_DIR}/{doc_index}", "w", encoding="utf-8") as file:
+                file.write(dumps(documents[doc_index]))
+
+    print(f"Loaded {len(documents)} pages from {len(pdf_paths)} PDFs")
+    return documents
+
+def load_cache():
+    print("Using document cache...")
+    documents = []
+    filenames = os.listdir(CACHE_DIR)
+    filenames.sort(key=int)
+    for filename in filenames:
+        with open(f"{CACHE_DIR}/{filename}", encoding="utf-8") as file:
+            documents.append(loads(file.read()))
+    print(f"Loaded {len(documents)} documents")
+    return documents
 
 
-def keyword_score(query: str, text: str) -> float:
-    """A tiny, dependency-free relevance score: shared word count. This stands in for
-    your real hybrid retriever, so the retrieval step needs no extra dependencies. The
-    demo still calls the LLM, which requires an OpenRouter API key."""
-    q = set(re.findall(r"[a-z0-9]+", query.lower()))
-    t = set(re.findall(r"[a-z0-9]+", text.lower()))
-    return float(len(q & t))
+
+docs = load_cache() if os.path.exists(CACHE_DIR) else load_pdf_pages()
+# Add index so we can get it from Chroma results
+for index, doc in enumerate(docs):
+    doc.metadata.update({
+        "doc_index": index,
+    })
+
+####################################### DOCUMENT RETRIEVAL ####################################### 
+TOP_K = 8
+
+# Stopwords list from Lab 1.2
+_STOPWORDS = {
+    "a", "an", "the", "and", "but", "or", "nor", "so", "yet", "for",
+    "in", "on", "at", "to", "of", "by", "with", "from", "into", "onto", "upon",
+    "about", "above", "below", "between", "through", "during", "before", "after",
+    "under", "over", "around", "along", "across", "is", "are", "was", "were",
+    "be", "been", "being", "have", "has", "had", "do", "does", "did",
+    "i", "we", "you", "he", "she", "it", "they", "me", "us", "him", "her", "them",
+    "my", "our", "your", "his", "its", "their", "this", "that", "these", "those",
+    "as", "if", "up", "out", "not", "no",
+}
+def tokenize(text: str) -> list[str]:
+    """Lowercase, split into alphanumeric tokens, drop stopwords. The same
+    tokenizer is used to index documents and to tokenize queries."""
+    return [t for t in re.findall(r"[a-z0-9]+", text.lower()) if t not in _STOPWORDS]
+bm25 = BM25Okapi([tokenize(doc.page_content) for doc in docs])
+def retrieve_bm25(query: str, topK: int):
+    scores = bm25.get_scores(tokenize(query))
+    top_indexes = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:topK]
+    return [(i, docs[i].page_content, scores[i]) for i in top_indexes]
+
+CHROMA_DIR = './chroma_db'
+EMBEDDING_MODEL = "openai/text-embedding-3-small"
+embeddings = OpenAIEmbeddings(
+    model=EMBEDDING_MODEL,
+    api_key=check_api_key(),
+    base_url=OPENROUTER_BASE_URL,
+)
+if not os.path.isdir(CHROMA_DIR):
+    Chroma.from_documents(docs, embeddings, persist_directory=CHROMA_DIR)
+def retrieve_vector(query: str, topK: int):
+    chroma = Chroma(persist_directory=CHROMA_DIR, embedding_function=embeddings)
+    top_vector = chroma.similarity_search_with_score(query, k=topK)
+    return [(d.metadata.get("doc_index", "unknown"), d.page_content, s) for d, s in top_vector]
+
+# Normalize function from Lab 2.2
+def normalize(scores: list[float], invert: bool = False) -> list[float]:
+    """Min-max scale a list of scores to [0, 1]. If invert is True, flip the scores 
+    so a LOW raw value (e.g., a small vector distance = very similar) becomes a HIGH 
+ normalized score."""
+    if not scores:
+        return []
+    lo, hi = min(scores), max(scores)
+    if hi == lo:
+        return [0.5] * len(scores)  # all equal → neutral
+    norm = [(s - lo) / (hi - lo) for s in scores]
+    return [1.0 - n for n in norm] if invert else norm
+
+# Rank fusion adapted from Lab 2.2
+def baseline_retrieve(query: str, k: int = TOP_K) -> list[tuple[int, float]]:
+    """Hybrid retrieval"""
+    top_bm25 = retrieve_bm25(query, k)
+    top_vector = retrieve_vector(query, k)
+
+    bm_norm: dict[int, float] = {}
+    vec_norm: dict[int, float] = {}
+    if top_bm25:
+        for (index, content, _), val in zip(top_bm25, normalize([s for _, _, s in top_bm25])):
+            bm_norm[index] = val
+    if top_vector:
+        for (index, content, _), val in zip(top_vector, normalize([d for _, _, d in top_vector], invert=True)):
+            vec_norm[index] = val
+
+    WEIGHT_BM25 = 0.3
+    WEIGHT_VECTOR = 0.7
+    all_found_ids = bm_norm.keys() | vec_norm.keys()
+    fused = [
+        (id, WEIGHT_BM25 * bm_norm.get(id, 0.0) + WEIGHT_VECTOR * vec_norm.get(id, 0.0))
+        for id in all_found_ids
+    ]
+    fused.sort(key=lambda t: t[1], reverse=True)
+    return fused[:k]
+
+# def keyword_score(query: str, text: str) -> float:
+#     """A tiny, dependency-free relevance score: shared word count. This stands in for
+#     your real hybrid retriever, so the retrieval step needs no extra dependencies. The
+#     demo still calls the LLM, which requires an OpenRouter API key."""
+#     q = set(re.findall(r"[a-z0-9]+", query.lower()))
+#     t = set(re.findall(r"[a-z0-9]+", text.lower()))
+#     return float(len(q & t))
 
 
-def baseline_retrieve(query: str, k: int = 3) -> list[tuple[str, float]]:
-    """Single-pass retrieval: Score every doc once, take the top k. (id, score)."""
-    scored = [(d["id"], keyword_score(query, d["text"])) for d in SAMPLE_DOCS]
-    scored.sort(key=lambda x: x[1], reverse=True)
-    return [(i, s) for i, s in scored[:k] if s > 0]
-
+# def baseline_retrieve(query: str, k: int = 3) -> list[tuple[str, float]]:
+#     """Single-pass retrieval: Score every doc once, take the top k. (id, score)."""
+#     scored = [(d["id"], keyword_score(query, d["text"])) for d in SAMPLE_DOCS]
+#     scored.sort(key=lambda x: x[1], reverse=True)
+#     return [(i, s) for i, s in scored[:k] if s > 0]
 
 # %% [markdown]
 # ## Step 2 — Multistep retrieval (provided, adapted from Lab 4.1)
@@ -211,7 +370,6 @@ def multistep_retrieve(llm: ChatOpenAI, query: str, k: int = 3) -> list[str]:
     ranked = sorted(score_map.items(), key=lambda kv: kv[1], reverse=True)
     return [doc_id for doc_id, _ in ranked[:k]]
 
-
 # %% [markdown]
 # ## Step 3 — Graph-based retrieval (provided, adapted from Lab 4.2)
 #
@@ -220,36 +378,35 @@ def multistep_retrieve(llm: ChatOpenAI, query: str, k: int = 3) -> list[str]:
 # seed's linked documents and topic-siblings as extra context — deduplicated.
 
 # %%
-def build_graph(docs: list[dict]) -> nx.DiGraph:
-    G = nx.DiGraph()
-    for d in docs:
-        G.add_node(f"doc:{d['id']}", node_type="doc")
-        for other in d["links"]:
-            G.add_edge(f"doc:{d['id']}", f"doc:{other}", edge_type="links_to")
-        for topic in d["topics"]:
-            G.add_node(f"topic:{topic}", node_type="topic")
-            G.add_edge(f"doc:{d['id']}", f"topic:{topic}", edge_type="relates_to")
-    return G
+# def build_graph(docs: list[dict]) -> nx.DiGraph:
+#     G = nx.DiGraph()
+#     for d in docs:
+#         G.add_node(f"doc:{d['id']}", node_type="doc")
+#         for other in d["links"]:
+#             G.add_edge(f"doc:{d['id']}", f"doc:{other}", edge_type="links_to")
+#         for topic in d["topics"]:
+#             G.add_node(f"topic:{topic}", node_type="topic")
+#             G.add_edge(f"doc:{d['id']}", f"topic:{topic}", edge_type="relates_to")
+#     return G
 
 
-def graph_retrieve(graph: nx.DiGraph, query: str, k: int = 3) -> dict[str, str]:
-    """Return {doc_id: source_label}: baseline seeds plus their graph neighbors."""
-    union: dict[str, str] = {}
-    for doc_id, _ in baseline_retrieve(query, k):
-        union[doc_id] = "seed"
-    for seed in list(union):
-        node = f"doc:{seed}"
-        if not graph.has_node(node):
-            continue
-        for _, target, ed in graph.out_edges(node, data=True):
-            if ed.get("edge_type") == "links_to":
-                union.setdefault(target.removeprefix("doc:"), "linked")
-            elif ed.get("edge_type") == "relates_to":
-                for sib, _, ed2 in graph.in_edges(target, data=True):  # Source docs on this topic
-                    if ed2.get("edge_type") == "relates_to":
-                        union.setdefault(sib.removeprefix("doc:"), "topic")
-    return union
-
+# def graph_retrieve(graph: nx.DiGraph, query: str, k: int = 3) -> dict[str, str]:
+#     """Return {doc_id: source_label}: baseline seeds plus their graph neighbors."""
+#     union: dict[str, str] = {}
+#     for doc_id, _ in baseline_retrieve(query, k):
+#         union[doc_id] = "seed"
+#     for seed in list(union):
+#         node = f"doc:{seed}"
+#         if not graph.has_node(node):
+#             continue
+#         for _, target, ed in graph.out_edges(node, data=True):
+#             if ed.get("edge_type") == "links_to":
+#                 union.setdefault(target.removeprefix("doc:"), "linked")
+#             elif ed.get("edge_type") == "relates_to":
+#                 for sib, _, ed2 in graph.in_edges(target, data=True):  # Source docs on this topic
+#                     if ed2.get("edge_type") == "relates_to":
+#                         union.setdefault(sib.removeprefix("doc:"), "topic")
+#     return union
 
 # %% [markdown]
 # ## Step 4 — Your advanced-retrieval plan (TODO)
@@ -274,7 +431,20 @@ def my_advanced_plan() -> dict[str, Any]:
 
     Delete the raise NotImplementedError line once your code works.
     """
-    raise NotImplementedError("my_advanced_plan() — see the TODO above.")
+    return {
+      "technique": "decomposition",
+      "node_types": None,
+      "edge_types": None,
+      "test_queries": [
+        # Should be able to compare to other papers in addition to the original sketching paper
+        "What is unique about program synthesis by sketching?",
+        # Corpus does not contain the information to answer this question. Will the model recognize it's impossible with more context? 
+        "What are some program synthesis techniques that were explored before the year 2000? Provide direct quotations from original sources, including a citation of the original paper",
+        # A simple query with a direct answer (see if decomposition affects ability to get very specific answers)
+        "What authors wrote the paper \"Verifiable Reinforcement Learning via Policy Extraction\"?",
+      ],
+      "rationale": "Query decomposition allows more queries to be made regardless of the structure of the original data (the research papers have little consistent structure).",
+    }
 
 
 # %% [markdown]
@@ -287,7 +457,7 @@ def my_advanced_plan() -> dict[str, Any]:
 
 # %%
 def answer_from_docs(llm: ChatOpenAI, query: str, doc_ids: list[str]) -> str:
-    context = "\n\n".join(f"[{i}] {DOC_BY_ID[i]['text']}" for i in doc_ids if i in DOC_BY_ID)
+    context = "\n\n".join(f"[{i}] {docs[i].page_content}" for i in doc_ids)
     messages = [
         SystemMessage(content=ANSWER_SYSTEM),
         HumanMessage(content=f"Documents:\n{context}\n\nQuestion: {query}"),
@@ -297,32 +467,36 @@ def answer_from_docs(llm: ChatOpenAI, query: str, doc_ids: list[str]) -> str:
 
 def run_demo() -> None:
     llm = make_llm()
-    graph = build_graph(SAMPLE_DOCS)
-    query = "How does breaking a question into parts and following document links help retrieval?"
+    # graph = build_graph(SAMPLE_DOCS)
+    # query = "How does breaking a question into parts and following document links help retrieval?"
 
     print("=" * 72)
-    print(f"Checkpoint 4.1 demo — scenario: {SCENARIO}\nQuery: {query}\n")
+    # print(f"Checkpoint 4.1 demo — scenario: {SCENARIO}\nQuery: {query}\n")
 
-    base = [i for i, _ in baseline_retrieve(query, 3)]
-    print(f"BASELINE (single-pass) retrieved: {base}")
+    # base = [i for i, _ in baseline_retrieve(query, 3)]
+    # print(f"BASELINE (single-pass) retrieved: {base}")
 
-    multi = multistep_retrieve(llm, query, 3)
-    print(f"MULTI-STEP retrieved:             {multi}")
+    # multi = multistep_retrieve(llm, query, 3)
+    # print(f"MULTI-STEP retrieved:             {multi}")
 
-    g = graph_retrieve(graph, query, 3)
-    print(f"GRAPH retrieved (with sources):   {g}")
+    # g = graph_retrieve(graph, query, 3)
+    # print(f"GRAPH retrieved (with sources):   {g}")
 
-    answer = answer_from_docs(llm, query, list(g.keys()))
-    print(f"\nGraph-augmented answer:\n{answer}\n")
-    log_response("GRAPH", query, answer)
+    # answer = answer_from_docs(llm, query, list(g.keys()))
+    # print(f"\nGraph-augmented answer:\n{answer}\n")
+    # log_response("GRAPH", query, answer)
 
     # Show your own plan was filled in.
-    try:
-        plan = my_advanced_plan()
-        print("Your advanced-retrieval plan:")
-        print(json.dumps(plan, indent=2))
-    except NotImplementedError as e:
-        print(f"[my_advanced_plan not done yet] {e}")
+    # try:
+    plan = my_advanced_plan()
+    print("Your advanced-retrieval plan:")
+    print(json.dumps(plan, indent=2))
+    # except NotImplementedError as e:
+    #     print(f"[my_advanced_plan not done yet] {e}")
+    for index, query in enumerate(plan["test_queries"]):
+        docs = multistep_retrieve(llm, query, TOP_K)
+        answer = answer_from_docs(llm, query, docs)
+        log_response(f"Query {index + 1}", query, answer)
 
     print("=" * 72)
     print("Done. Now reproduce this comparison in YOUR real system (baseline vs "
